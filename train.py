@@ -453,7 +453,7 @@ MUON_BETA2 = 0.85
 MUON_MOMENTUM_START = 0.90
 MUON_MOMENTUM_END = 0.95
 WARMUP_RATIO = 0.0      # fraction of time budget for LR warmup
-WARMDOWN_RATIO = 0.85   # fraction of time budget for LR warmdown
+WARMDOWN_RATIO = 0.88   # fraction of time budget for LR warmdown
 FINAL_LR_FRAC = 0.03    # final LR as fraction of initial
 
 # Model size
