@@ -454,7 +454,7 @@ MUON_MOMENTUM_START = 0.88
 MUON_MOMENTUM_END = 0.95
 WARMUP_RATIO = 0.0      # fraction of time budget for LR warmup
 WARMDOWN_RATIO = 0.85   # fraction of time budget for LR warmdown
-FINAL_LR_FRAC = 0.04    # final LR as fraction of initial
+FINAL_LR_FRAC = 0.03    # final LR as fraction of initial
 
 # Model size
 DEPTH = 12              # number of transformer layers
