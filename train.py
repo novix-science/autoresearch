@@ -257,8 +257,11 @@ class GPT(nn.Module):
         ]
         for shape in sorted({p.shape for p in matrix_params}):
             group_params = [p for p in matrix_params if p.shape == shape]
+            # Give MLP weights (non-square) 80% of the LR
+            is_square = (shape[-2] == shape[-1])
+            lr_scale = 1.0 if is_square else 0.8
             param_groups.append(dict(
-                kind='muon', params=group_params, lr=matrix_lr,
+                kind='muon', params=group_params, lr=matrix_lr * lr_scale,
                 momentum=0.95, ns_steps=5, beta2=0.7, weight_decay=weight_decay,
             ))
         optimizer = MuonAdamW(param_groups)
