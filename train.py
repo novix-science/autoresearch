@@ -437,7 +437,7 @@ HEAD_DIM = 128          # target head dimension for attention
 WINDOW_PATTERN = "SSSL" # sliding window pattern: L=full, S=half context
 SHORT_WINDOW_SIZE = 512
 ROPE_BASE = 60000
-Q_SCALE = 1.0
+Q_SCALE = 1.25
 X0_LAMBDA_INIT = 0.2
 
 # Optimization
