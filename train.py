@@ -260,7 +260,7 @@ class GPT(nn.Module):
             group_params = [p for p in matrix_params if p.shape == shape]
             param_groups.append(dict(
                 kind='muon', params=group_params, lr=matrix_lr,
-                momentum=MUON_MOMENTUM_START, ns_steps=5, beta2=muon_beta2, weight_decay=matrix_weight_decay,
+                momentum=MUON_MOMENTUM_START, ns_steps=6, beta2=muon_beta2, weight_decay=matrix_weight_decay,
             ))
         optimizer = MuonAdamW(param_groups)
         for group in optimizer.param_groups:
