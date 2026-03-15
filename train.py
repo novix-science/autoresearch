@@ -151,7 +151,7 @@ class GPT(nn.Module):
     def init_weights(self):
         # Embedding and unembedding
         torch.nn.init.normal_(self.transformer.wte.weight, mean=0.0, std=0.5)
-        torch.nn.init.normal_(self.lm_head.weight, mean=0.0, std=0.001)
+        torch.nn.init.zeros_(self.lm_head.weight)
         # Transformer blocks
         n_embd = self.config.n_embd
         s = 3**0.5 * n_embd**-0.5
