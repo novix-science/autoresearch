@@ -529,7 +529,7 @@ def get_muon_momentum(step):
     return (1 - frac) * 0.80 + frac * 0.93
 
 def get_weight_decay(progress):
-    return WEIGHT_DECAY * (1 - progress) ** 2
+    return WEIGHT_DECAY * (1 - progress)
 
 # ---------------------------------------------------------------------------
 # Training loop
