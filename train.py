@@ -90,7 +90,7 @@ class CausalSelfAttention(nn.Module):
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
         q, k = norm(q), norm(k)
 
-        y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
+        y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size, softmax_scale=0.12)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
         return y
@@ -440,7 +440,7 @@ EMBEDDING_LR = 0.6      # learning rate for token embeddings (Adam) - try origin
 UNEMBEDDING_LR = 0.006  # learning rate for lm_head (Adam) - push higher
 MATRIX_LR = 0.02        # learning rate for matrix parameters (Muon)
 SCALAR_LR = 0.25        # learning rate for per-layer scalars (Adam)
-WEIGHT_DECAY = 0.3      # cautious weight decay for Muon - increased
+WEIGHT_DECAY = 0.25     # cautious weight decay for Muon
 ADAM_BETAS = (0.8, 0.95) # Adam beta1, beta2
 WARMUP_RATIO = 0.0      # fraction of time budget for LR warmup
 WARMDOWN_RATIO = 0.7    # fraction of time budget for LR warmdown
