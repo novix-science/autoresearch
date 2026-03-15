@@ -556,7 +556,7 @@ while True:
     lrm = get_lr_multiplier(progress)
     muon_momentum = get_muon_momentum(step)
     muon_weight_decay = get_weight_decay(progress)
-    emb_wd = 0.014 * (1 - progress)  # embedding WD decays from 0.014 to 0
+    emb_wd = 0.012 * (1 - progress)  # embedding WD decays from 0.012 to 0
     unemb_wd = 0.012 * (1 - progress)  # unembedding WD decays from 0.012 to 0
     for i, group in enumerate(optimizer.param_groups):
         group["lr"] = group["initial_lr"] * lrm
