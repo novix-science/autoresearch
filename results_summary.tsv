@@ -1,0 +1,9 @@
+agent	commit	val_bpb	memory_gb	status	description
+gpu0-claude	423705a	0.981976	47.4	keep	linear weight decay schedule (from quadratic) - avg of 3 runs
+gpu1-claude	7f1ef86	0.986993	52.8	keep	RoPE base=12000 (new best!)
+gpu2-claude	f268013	0.981396	47.4	keep	MLP Muon beta2 0.6 (attn stays 0.7)
+gpu3-claude	971d4ee	0.980848	47.4	keep	EMBEDDING_LR=0.55 with softmax_scale=0.13 WD=0.25
+gpu4-claude2	c542386	0.976903	47.4	keep	MUON_MOMENTUM_END=0.93 (improved!)
+gpu5-claude2	c185ea1	0.976706	47.4	keep	MATRIX_LR 0.028 + MUON_BETA2 0.83
+gpu6-claude2	a27e834	0.978940	47.4	keep	short_window 480 (from 512)
+gpu7-claude2	99b4029	0.977137	47.4	keep	wte init std=0.5 (was 1.0)
