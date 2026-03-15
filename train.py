@@ -263,6 +263,7 @@ class GPT(nn.Module):
         optimizer = MuonAdamW(param_groups)
         for group in optimizer.param_groups:
             group["initial_lr"] = group["lr"]
+            group["initial_wd"] = group.get("weight_decay", 0)
         return optimizer
 
     def forward(self, idx, targets=None, reduction='mean'):
@@ -556,11 +557,14 @@ while True:
     lrm = get_lr_multiplier(progress)
     muon_momentum = get_muon_momentum(step)
     muon_weight_decay = get_weight_decay(progress)
+    wd_scale = 1 - progress
     for group in optimizer.param_groups:
         group["lr"] = group["initial_lr"] * lrm
         if group['kind'] == 'muon':
             group["momentum"] = muon_momentum
             group["weight_decay"] = muon_weight_decay
+        elif group['kind'] == 'adamw' and group.get("initial_wd", 0) > 0:
+            group["weight_decay"] = group["initial_wd"] * wd_scale
     optimizer.step()
     model.zero_grad(set_to_none=True)
 
