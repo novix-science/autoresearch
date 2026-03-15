@@ -87,8 +87,9 @@ class CausalSelfAttention(nn.Module):
             v = v + gate.unsqueeze(-1) * ve
 
         cos, sin = cos_sin
-        q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
         q, k = norm(q), norm(k)
+        q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
+        q = q * Q_SCALE
 
         y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
         y = y.contiguous().view(B, T, -1)
@@ -142,7 +143,7 @@ class GPT(nn.Module):
         })
         # Rotary embeddings
         self.rotary_seq_len = config.sequence_len * 10
-        cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim)
+        cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim, base=ROPE_BASE)
         self.register_buffer("cos", cos, persistent=False)
         self.register_buffer("sin", sin, persistent=False)
 
@@ -163,7 +164,7 @@ class GPT(nn.Module):
             torch.nn.init.zeros_(block.mlp.c_proj.weight)
         # Per-layer scalars
         self.resid_lambdas.fill_(1.0)
-        self.x0_lambdas.fill_(0.1)
+        self.x0_lambdas.fill_(X0_LAMBDA_INIT)
         # Value embeddings
         for ve in self.value_embeds.values():
             torch.nn.init.uniform_(ve.weight, -s, s)
@@ -173,7 +174,7 @@ class GPT(nn.Module):
                 torch.nn.init.zeros_(block.attn.ve_gate.weight)
         # Rotary embeddings
         head_dim = self.config.n_embd // self.config.n_head
-        cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim)
+        cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim, base=ROPE_BASE)
         self.cos, self.sin = cos, sin
         # Cast embeddings to bf16
         self.transformer.wte.to(dtype=torch.bfloat16)
@@ -196,7 +197,7 @@ class GPT(nn.Module):
         pattern = config.window_pattern.upper()
         assert all(c in "SL" for c in pattern)
         long_window = config.sequence_len
-        short_window = long_window // 2
+        short_window = SHORT_WINDOW_SIZE
         char_to_window = {"L": (long_window, 0), "S": (short_window, 0)}
         window_sizes = []
         for layer_idx in range(config.n_layer):
@@ -234,7 +235,8 @@ class GPT(nn.Module):
         }
 
     def setup_optimizer(self, unembedding_lr=0.004, embedding_lr=0.2, matrix_lr=0.02,
-                        weight_decay=0.0, adam_betas=(0.8, 0.95), scalar_lr=0.5):
+                        matrix_weight_decay=0.0, adam_betas=(0.8, 0.95), scalar_lr=0.5,
+                        embedding_weight_decay=0.0, muon_beta2=0.95):
         model_dim = self.config.n_embd
         matrix_params = list(self.transformer.h.parameters())
         value_embeds_params = list(self.value_embeds.parameters())
@@ -248,9 +250,9 @@ class GPT(nn.Module):
         dmodel_lr_scale = (model_dim / 768) ** -0.5
         print(f"Scaling AdamW LRs by 1/sqrt({model_dim}/768) = {dmodel_lr_scale:.6f}")
         param_groups = [
-            dict(kind='adamw', params=lm_head_params, lr=unembedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
-            dict(kind='adamw', params=embedding_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
-            dict(kind='adamw', params=value_embeds_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
+            dict(kind='adamw', name='lm_head', params=lm_head_params, lr=unembedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=embedding_weight_decay),
+            dict(kind='adamw', name='embedding', params=embedding_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=embedding_weight_decay),
+            dict(kind='adamw', name='value_embeds', params=value_embeds_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=embedding_weight_decay),
             dict(kind='adamw', params=resid_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),
         ]
@@ -258,7 +260,7 @@ class GPT(nn.Module):
             group_params = [p for p in matrix_params if p.shape == shape]
             param_groups.append(dict(
                 kind='muon', params=group_params, lr=matrix_lr,
-                momentum=0.95, ns_steps=5, beta2=0.95, weight_decay=weight_decay,
+                momentum=MUON_MOMENTUM_START, ns_steps=5, beta2=muon_beta2, weight_decay=matrix_weight_decay,
             ))
         optimizer = MuonAdamW(param_groups)
         for group in optimizer.param_groups:
@@ -433,22 +435,30 @@ class MuonAdamW(torch.optim.Optimizer):
 ASPECT_RATIO = 64       # model_dim = depth * ASPECT_RATIO
 HEAD_DIM = 128          # target head dimension for attention
 WINDOW_PATTERN = "SSSL" # sliding window pattern: L=full, S=half context
+SHORT_WINDOW_SIZE = 512
+ROPE_BASE = 60000
+Q_SCALE = 1.25
+X0_LAMBDA_INIT = 0.2
 
 # Optimization
-TOTAL_BATCH_SIZE = 2**19 # ~524K tokens per optimizer step
+TOTAL_BATCH_SIZE = 2**17 # ~131K tokens per optimizer step
 EMBEDDING_LR = 0.6      # learning rate for token embeddings (Adam)
-UNEMBEDDING_LR = 0.004  # learning rate for lm_head (Adam)
-MATRIX_LR = 0.04        # learning rate for matrix parameters (Muon)
-SCALAR_LR = 0.5         # learning rate for per-layer scalars (Adam)
-WEIGHT_DECAY = 0.2      # cautious weight decay for Muon
+UNEMBEDDING_LR = 0.009  # learning rate for lm_head (Adam)
+MATRIX_LR = 0.028       # learning rate for matrix parameters (Muon)
+SCALAR_LR = 0.25        # learning rate for per-layer scalars (Adam)
+WEIGHT_DECAY = 0.17     # cautious weight decay for Muon
+EMBEDDING_WEIGHT_DECAY = 0.008
 ADAM_BETAS = (0.8, 0.95) # Adam beta1, beta2
+MUON_BETA2 = 0.83
+MUON_MOMENTUM_START = 0.90
+MUON_MOMENTUM_END = 0.95
 WARMUP_RATIO = 0.0      # fraction of time budget for LR warmup
-WARMDOWN_RATIO = 0.5    # fraction of time budget for LR warmdown
-FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
+WARMDOWN_RATIO = 0.88   # fraction of time budget for LR warmdown
+FINAL_LR_FRAC = 0.03    # final LR as fraction of initial
 
 # Model size
-DEPTH = 8               # number of transformer layers
-DEVICE_BATCH_SIZE = 128  # per-device batch size (reduce if OOM)
+DEPTH = 12              # number of transformer layers
+DEVICE_BATCH_SIZE = 64  # per-device batch size (reduce if OOM)
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
@@ -502,7 +512,9 @@ optimizer = model.setup_optimizer(
     scalar_lr=SCALAR_LR,
     adam_betas=ADAM_BETAS,
     matrix_lr=MATRIX_LR,
-    weight_decay=WEIGHT_DECAY,
+    matrix_weight_decay=WEIGHT_DECAY,
+    embedding_weight_decay=EMBEDDING_WEIGHT_DECAY,
+    muon_beta2=MUON_BETA2,
 )
 
 model = torch.compile(model, dynamic=False)
@@ -526,10 +538,13 @@ def get_lr_multiplier(progress):
 
 def get_muon_momentum(step):
     frac = min(step / 300, 1)
-    return (1 - frac) * 0.85 + frac * 0.95
+    return (1 - frac) * MUON_MOMENTUM_START + frac * MUON_MOMENTUM_END
 
 def get_weight_decay(progress):
     return WEIGHT_DECAY * (1 - progress)
+
+def get_embedding_weight_decay(progress):
+    return EMBEDDING_WEIGHT_DECAY * (1 - progress)
 
 # ---------------------------------------------------------------------------
 # Training loop
@@ -561,6 +576,8 @@ while True:
         if group['kind'] == 'muon':
             group["momentum"] = muon_momentum
             group["weight_decay"] = muon_weight_decay
+        elif group.get("name") in {"lm_head", "embedding", "value_embeds"}:
+            group["weight_decay"] = get_embedding_weight_decay(progress)
     optimizer.step()
     model.zero_grad(set_to_none=True)
 
