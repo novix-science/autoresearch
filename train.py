@@ -260,9 +260,10 @@ class GPT(nn.Module):
             # Give MLP weights (non-square) 80% of the LR
             is_square = (shape[-2] == shape[-1])
             lr_scale = 1.0 if is_square else 0.8
+            b2 = 0.7 if is_square else 0.6
             param_groups.append(dict(
                 kind='muon', params=group_params, lr=matrix_lr * lr_scale,
-                momentum=0.95, ns_steps=5, beta2=0.7, weight_decay=weight_decay,
+                momentum=0.95, ns_steps=5, beta2=b2, weight_decay=weight_decay,
             ))
         optimizer = MuonAdamW(param_groups)
         for group in optimizer.param_groups:
